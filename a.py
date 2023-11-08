@@ -13,6 +13,18 @@ class CashFlow:
     def update_usd_bought(self, cash: float):
         self.usd_bought += cash
         
+    def get_exchange_rate_prom(self, quantity: int, price_buy: float, price_sell: float):
+        return (price_buy * quantity + self.ars_spent) / (price_sell * quantity + self.usd_bought)
+
+    def get_max_quantity(self, price_buy: float, price_sell: float, max_exchange_rate: float):
+        return (self.ars_spent - max_exchange_rate * self.usd_bought) // (max_exchange_rate * price_sell - price_buy)
+
+    def get_as_dict(self):
+        return {
+            "total_pesos_gastados": self.ars_spent / 100,
+            "total_dolares_generados": self.usd_bought / 100,
+            "tipo_cambio_promedio": self.ars_spent / self.usd_bought if self.usd_bought != 0 else None
+        }
 
 def get_account_available_ARS() :
     acc = pyRofex.get_account_report()
@@ -44,7 +56,7 @@ def get_market_data_AL30(depth=1) :
     return offers_AL30["marketData"]["OF"]
 
 def get_market_data_AL30D(depth=1) :
-    bids_AL30D = pyRofex.get_market_data(ticker="MERV - XMEV - AL30D - 48hs", entries=[pyRofex.MarketDataEntry.BIDS] , depth=depth)
+    bids_AL30D = pyRofex.get_market_data(ticker="MERV - XMEV - AL30D - 48hs", entries=[pyRofex.MarketDataEntry.BIDS], depth=depth)
     if (bids_AL30D["status"] != "OK") :
         raise Exception
     return bids_AL30D["marketData"]["BI"]
@@ -79,65 +91,63 @@ def compraDolares(monto_pesos: float, tipo_cambio: float):
             print("Error al obtener datos de mercado")
             break
 
-        if cash_flow.available_cash < offers_AL30['price']:
+        buy_price_AL30 = offers_AL30['price']
+        sell_price_AL30D = bids_AL30D['price']
+
+        if cash_flow.available_cash < buy_price_AL30:
             break
 
-        cantidadAL30D = bids_AL30D['size']
-        cantidadAL30 = cash_flow.available_cash // offers_AL30['price']
+        quantity_AL30 = offers_AL30['size']
+        quantity_AL30D = bids_AL30D['size']
+        buy_quantity = cash_flow.available_cash // buy_price_AL30
 
-        if cantidadAL30 > offers_AL30['size']:
-            cantidadAL30 = offers_AL30['size']
+        if buy_quantity > quantity_AL30:
+            buy_quantity = quantity_AL30
         
-        cantidad = min(cantidadAL30 , cantidadAL30D)
+        quantity = min(buy_quantity, quantity_AL30D)
 
-        tentativo_ars = cantidad * offers_AL30['price']
-        tentativo_usd = cantidad * bids_AL30D['price']
-        prom_cambio = (tentativo_ars + cash_flow.ars_spent) / (tentativo_usd + cash_flow.usd_bought)
-
-        if prom_cambio > tipo_cambio:
-            print("Se supero el maximo tipo de cambio deseado, se detuvo la operacion")
+        if cash_flow.get_exchange_rate_prom(quantity, buy_price_AL30, sell_price_AL30D) > tipo_cambio:
             # Maximizar la cantidad para que de el promedio de cambio si ya con 1 bono se supera el tipo de cambio romper
-            break
+            quantity = cash_flow.get_max_quantity(buy_price_AL30, sell_price_AL30D, tipo_cambio)
+            if quantity == 0:
+                break
 
         # Compramos AL30 e intentamos venderlo como AL30D de la forma mas atomica posible para reducir las posibilidades de quedarnos con bonos en nuestra posesion
-        order_buy = buy_AL30(offers_AL30['price'] , cantidad)
-        order_sell = sell_AL30D(bids_AL30D['price'] , cantidad)
+        order_buy = buy_AL30(buy_price_AL30, quantity)
+        order_sell = sell_AL30D(sell_price_AL30D, quantity)
 
         status_buy = pyRofex.get_order_status(order_buy["order"]["clientId"])
         if status_buy["order"]["status"] == "FILLED":
-            cash_flow.update_spent(cantidad * offers_AL30['price'])
 
             status_sell = pyRofex.get_order_status(order_sell["order"]["clientId"])
+            new_quantity = quantity
+
             while (status_sell["order"]["status"] == "CANCELLED"):
                 print("No se logro completar la orden de venta, se intenta nuevamente")
                 [bids_AL30D] = get_market_data_AL30D()
-                tentativo_usd = cantidad * bids_AL30D['price']
-                prom_cambio = cash_flow.ars_spent / (tentativo_usd + cash_flow.usd_bought)
+                sell_price_AL30D = bids_AL30D['price']
 
-                if prom_cambio > tipo_cambio:
-                    print("Se supero el maximo tipo de cambio deseado, quedan bonos AL30 en la cuenta")
-                    # ver de vender por pesos los bonos restantes
+                if cash_flow.get_exchange_rate_prom(quantity, buy_price_AL30, sell_price_AL30D) > tipo_cambio:
+                    # # Maximizar la cantidad para que de el promedio de cambio si ya con 1 bono se supera el tipo de cambio romper
+                    # new_quantity = cash_flow.get_max_quantity(buy_price_AL30, sell_price_AL30D, tipo_cambio)
+                    # if new_quantity == 0:
+                    #     break
+                    # order_sell = sell_AL30D(sell_price_AL30D, new_quantity)
+                    # status_sell = pyRofex.get_order_status(order_sell["order"]["clientId"])
+                    # continue
+                    print("Se supero el exchange rate maximo quedan bonos en posesion")
                     break
 
-                order_sell = sell_AL30D(bids_AL30D['price'] , cantidad)
+                order_sell = sell_AL30D(sell_price_AL30D, quantity)
                 status_sell = pyRofex.get_order_status(order_sell["order"]["clientId"])
 
+            # if quantity - new_quantity > 0:
+
+            cash_flow.update_spent(quantity * buy_price_AL30)
             if status_sell["order"]["status"] == "FILLED":
-                cash_flow.update_usd_bought(cantidad * bids_AL30D['price'])
+                cash_flow.update_usd_bought(quantity * sell_price_AL30D)
 
-    total_pesos = cash_flow.ars_spent / 100
-    total_usd = cash_flow.usd_bought / 100
-
-    if total_usd == 0:
-        tipo_cambio_promedio = None
-    else:
-        tipo_cambio_promedio = total_pesos / total_usd
-
-    resultado = {}
-    resultado["total_pesos"] = total_pesos
-    resultado["total_dolares"] = total_usd
-    resultado["tipo_cambio_promedio"] = tipo_cambio_promedio
-    return resultado
+    return cash_flow.get_as_dict()
 
 def main() :
     req = pyRofex.initialize(user="lpoma20009154",
@@ -147,7 +157,7 @@ def main() :
     if req != None :
         print ("Error en la inicialización: " + req)
     print ("Inicialización exitosa")
-    dict = compraDolares(30000, 30)
+    dict = compraDolares(10000, 30)
     print(dict)
 
 if __name__ == "__main__":

@@ -99,7 +99,7 @@ def compraDolares(monto_pesos: float, tipo_cambio: float):
             [offers_AL30] = get_market_data_AL30()
             [bids_AL30D] = get_market_data_AL30D()
         except:
-            print("Error al obtener datos de mercado - No hay ofertas/bids disponibles para AL30/AL30D")
+            print("No hay ofertas/bids disponibles para AL30/AL30D, se finaliza la operacion")
             break
 
         buy_price_AL30 = offers_AL30['price']
@@ -131,12 +131,11 @@ def compraDolares(monto_pesos: float, tipo_cambio: float):
 
             # Si la orden de compra se ejecuto pero la de venta no, significa que tenemos bonos en nuestra posesion, por lo tanto intentamos venderlos antes de continuar la operacion
             while (status_sell["order"]["status"] == "CANCELLED"):  
-                print("No se logro completar la orden de venta, se intenta nuevamente") # Eliminar
                 [bids_AL30D] = get_market_data_AL30D()
                 sell_price_AL30D = bids_AL30D['price']
 
                 if cash_flow.get_exchange_rate_prom(quantity, buy_price_AL30, sell_price_AL30D) > tipo_cambio:
-                    print("Se supero el exchange rate maximo quedan bonos en posesion") # Aqui se podrian liquidar los bonos en posesion por pesos
+                    print("Se supero el exchange rate maximo quedan bonos en posesion") # Aqui se podrian liquidar los bonos en posesion por pesos automaticamente
                     break
 
                 order_sell = sell_AL30D(sell_price_AL30D, quantity)
@@ -157,7 +156,7 @@ def main() :
     if req != None :
         print ("Error en la inicialización: " + req)
     print ("Inicialización exitosa")
-    dict = compraDolares(25000, 10)
+    dict = compraDolares(250000, 29)
     print(dict)
 
 if __name__ == "__main__":

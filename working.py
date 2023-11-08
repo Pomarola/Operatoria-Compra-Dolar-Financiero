@@ -110,12 +110,14 @@ def compraDolares(monto_pesos: float, tipo_cambio: float):
         quantity_buy = cash_flow.get_max_quantity_buy(buy_price_AL30)   # Cantidad de bonos AL30 que se pueden comprar con el dinero disponible
         quantity = min(quantity_buy, quantity_AL30, quantity_AL30D)
 
-        if cash_flow.get_exchange_rate_prom(quantity, buy_price_AL30, sell_price_AL30D) > tipo_cambio:
-            quantity = cash_flow.get_max_quantity_exchange_rate(buy_price_AL30, sell_price_AL30D, tipo_cambio) # Maximizar la cantidad para no superar el maximo promedio de cambio
-
         # Si no es posible comprar/vender 1 bono AL30/AL30D finalizar la operacion
         if quantity < 1:
             break
+
+        if cash_flow.get_exchange_rate_prom(quantity, buy_price_AL30, sell_price_AL30D) > tipo_cambio:
+            quantity = cash_flow.get_max_quantity_exchange_rate(buy_price_AL30, sell_price_AL30D, tipo_cambio) # Maximizar la cantidad para no superar el maximo promedio de cambio
+            if quantity < 1:
+                break
 
         # Compramos AL30 e intentamos venderlo como AL30D de la forma mas atomica posible para reducir las posibilidades de quedarnos con bonos en nuestra posesion
         # Es preferible hacer los checkeos de las ordenes luego.
@@ -155,7 +157,7 @@ def main() :
     if req != None :
         print ("Error en la inicialización: " + req)
     print ("Inicialización exitosa")
-    dict = compraDolares(20000, 27.5)
+    dict = compraDolares(25000, 10)
     print(dict)
 
 if __name__ == "__main__":

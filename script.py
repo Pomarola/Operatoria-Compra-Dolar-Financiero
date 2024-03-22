@@ -12,9 +12,10 @@ El caso problematico es si se ejecuta la compra pero no la venta, en ese caso in
 """
 
 import pyRofex
+from time import sleep
 
-BUYING_BOND = "MERV - XMEV - AL30 - 24hs"
-SELLING_BOND = "MERV - XMEV - AL30D - 24hs"
+BUYING_BOND = "MERV - XMEV - AL30 - 48hs"
+SELLING_BOND = "MERV - XMEV - AL30D - 48hs"
 
 # Clase donde se almacena el flujo de caja de la operacion
 class CashFlow:
@@ -79,15 +80,19 @@ def sell_selling_bond(price: float, quantity: int):
 # Funcion para obtener los datos de mercado del bono de compra. Podemos opcionalmente ingresar la profundidad. Si falla la llamada se lanza una excepcion
 def get_market_data_buying_bond(depth=1) :
     offers_buying_bond = pyRofex.get_market_data(ticker=BUYING_BOND, entries=[pyRofex.MarketDataEntry.OFFERS], depth=depth)
-    if (offers_buying_bond["status"] != "OK") :
-        raise Exception
+    while (offers_buying_bond["marketData"]["OF"] == [] or offers_buying_bond["marketData"]["OF"] == None or offers_buying_bond["status"] != "OK") :
+        print("Esperando a oferta")
+        sleep(4)
+        offers_buying_bond = pyRofex.get_market_data(ticker=BUYING_BOND, entries=[pyRofex.MarketDataEntry.OFFERS], depth=depth)
     return offers_buying_bond["marketData"]["OF"]
 
 # Funcion para obtener los datos de mercado del bono de venta. Podemos opcionalmente ingresar la profundidad. Si falla la llamada se lanza una excepcion
 def get_market_data_selling_bond(depth=1) :
     bids_selling_bond = pyRofex.get_market_data(ticker=SELLING_BOND, entries=[pyRofex.MarketDataEntry.BIDS], depth=depth)
-    if (bids_selling_bond["status"] != "OK") :
-        raise Exception
+    while (bids_selling_bond["marketData"]["BI"] == [] or bids_selling_bond["marketData"]["BI"] == None or bids_selling_bond["status"] != "OK") :
+        print("Esperando a demanda")
+        sleep(4)
+        bids_selling_bond = pyRofex.get_market_data(ticker=SELLING_BOND, entries=[pyRofex.MarketDataEntry.BIDS], depth=depth)
     return bids_selling_bond["marketData"]["BI"]
 
 def compraDolares(monto_pesos: float, tipo_cambio: float):
@@ -164,19 +169,7 @@ def compraDolares(monto_pesos: float, tipo_cambio: float):
 
             if status_sell["order"]["status"] == "FILLED":
                 cash_flow.update_usd_bought(quantity * sell_price_selling_bond)
+                print("Se opero una parte")
+                print(cash_flow.get_as_dict())
 
     return cash_flow.get_as_dict()
-
-def main() :
-    req = pyRofex.initialize(user="lpoma20009154",
-                    password="yehdvD7$",
-                    account="REM9154",
-                    environment=pyRofex.Environment.REMARKET)
-    if req != None :
-        print ("Error en la inicialización: " + req)
-    print ("Inicialización exitosa")
-    dict = compraDolares(250000, 29)
-    print(dict)
-
-if __name__ == "__main__":
-    main()
